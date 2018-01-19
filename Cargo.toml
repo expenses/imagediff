@@ -1,0 +1,11 @@
+[package]
+name = "imagediff"
+version = "0.1.0"
+authors = ["Ashley <expenses@airmail.cc>"]
+
+[dependencies]
+image = "*"
+walkdir = "*"
+rayon = "*"
+structopt = "*"
+structopt-derive = "*"
