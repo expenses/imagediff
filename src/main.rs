@@ -31,7 +31,7 @@ fn main() {
     // Iterate over files in the directory
     WalkDir::new(&opt.directory).into_iter()
         .filter_map(|entry| entry.ok())
-	    .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| entry.file_type().is_file())
         // Map to and print out the path
         .map(|entry| {
             let path = entry.path().to_path_buf();
