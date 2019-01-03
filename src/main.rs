@@ -4,17 +4,14 @@ extern crate rayon;
 extern crate structopt;
 #[macro_use]
 extern crate structopt_derive;
-extern crate faster;
 
 use structopt::StructOpt;
 use image::{DynamicImage, RgbImage, FilterType};
 use walkdir::WalkDir;
 use rayon::iter::{ParallelIterator, IntoParallelRefMutIterator};
-use faster::IntoPackedRefIterator;
 
 use std::path::PathBuf;
 use std::fs::remove_file;
-use std::ops::Deref;
 
 #[derive(StructOpt)]
 struct Options {
@@ -104,10 +101,10 @@ impl ImageThumbnail {
     // Calculate the the difference between two thumbnails
     fn difference(&self, other: &ImageThumbnail) -> f32 {
         // Zip two iterators of pixel channels together
-        self.inner.deref().simd_iter()
-            .zip(other.inner.deref().simd_iter())
+        self.inner.iter()
+            .zip(other.inner.iter())
             // Map to channel difference as f32
-            .map(|(a, b)| (f32::from(a) - f32::from(b)).abs())
+            .map(|(&a, &b)| (f32::from(a) - f32::from(b)).abs())
             // Divide by number of channels and rescale to 0 -> 100
             .sum::<f32>() / Self::TOTAL_CHANNELS as f32 / 255.0 * 100.0
     }
