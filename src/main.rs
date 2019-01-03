@@ -46,25 +46,24 @@ fn main() {
         )
         .for_each(|(path, image)| {
             // Find the paths of a similar-enough image in parallel
-            let index = images.read().unwrap().iter()
+            let index = images.read().unwrap()
+                .iter()
                 .enumerate()
                 .find(|(_, &(ref original, _))| original.difference(&image) <= opt.threshold)
                 .map(|(index, _)| index);
 
+            let mut images = images.write().unwrap();
+
             // Push the path to the paths if they exist
             if let Some(index) = index {
-                images.write().unwrap()[index].1.push(path.clone());
-            }
-
-            let found = index.is_some();
-
-            // Or push the image and a new path vector
-            if !found {
-                images.write().unwrap().push((image, vec![path]));
+                images[index].1.push(path.clone());
+            } else {
+                images.push((image, vec![path]));
             }
         });
 
-    images.read().unwrap().iter()
+    images.read().unwrap()
+        .iter()
         // Filter to image groups with more than one path
         .filter(|&&(_, ref paths)| paths.len() > 1)
         // Flat map to the paths in the group along with their index
