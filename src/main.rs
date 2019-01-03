@@ -2,19 +2,16 @@ extern crate image;
 extern crate walkdir;
 extern crate rayon;
 extern crate structopt;
-#[macro_use]
 extern crate structopt_derive;
-extern crate faster;
 
 use structopt::StructOpt;
 use image::{DynamicImage, RgbImage, FilterType};
 use walkdir::WalkDir;
-use rayon::iter::{ParallelIterator, IntoParallelRefMutIterator};
-use faster::IntoPackedRefIterator;
+use rayon::iter::{ParallelIterator, ParallelBridge};
 
 use std::path::PathBuf;
 use std::fs::remove_file;
-use std::ops::Deref;
+use std::sync::*;
 
 #[derive(StructOpt)]
 struct Options {
@@ -28,13 +25,14 @@ struct Options {
 
 fn main() {
     let opt = Options::from_args();
-    let mut images: Vec<(ImageThumbnail, Vec<PathBuf>)> = Vec::new();
+    let images: RwLock<Vec<(ImageThumbnail, Vec<PathBuf>)>> = RwLock::new(Vec::new());
 
     // Iterate over files in the directory
     WalkDir::new(&opt.directory).into_iter()
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_file())
         .enumerate()
+        .par_bridge()
         // Map to and print out the path
         .map(|(i, entry)| {
             let path = entry.path().to_path_buf();
@@ -47,27 +45,26 @@ fn main() {
                 .map(|image| (path, ImageThumbnail::new(&image)))
         )
         .for_each(|(path, image)| {
-            let found = {
-                // Find the paths of a similar-enough image in parallel
-                let mut paths = images.par_iter_mut()
-                    .find_any(|&&mut (ref original, _)| original.difference(&image) <= opt.threshold)
-                    .map(|&mut (_, ref mut paths)| paths);
+            // Find the paths of a similar-enough image in parallel
+            let index = images.read().unwrap().iter()
+                .enumerate()
+                .find(|(_, &(ref original, _))| original.difference(&image) <= opt.threshold)
+                .map(|(index, _)| index);
 
-                // Push the path to the paths if they exist
-                if let Some(ref mut paths) = paths {
-                    paths.push(path.clone());
-                }
+            // Push the path to the paths if they exist
+            if let Some(index) = index {
+                images.write().unwrap()[index].1.push(path.clone());
+            }
 
-                paths.is_some()
-            };
+            let found = index.is_some();
 
             // Or push the image and a new path vector
             if !found {
-                images.push((image, vec![path]));
+                images.write().unwrap().push((image, vec![path]));
             }
         });
 
-    images.iter()
+    images.read().unwrap().iter()
         // Filter to image groups with more than one path
         .filter(|&&(_, ref paths)| paths.len() > 1)
         // Flat map to the paths in the group along with their index
@@ -104,10 +101,10 @@ impl ImageThumbnail {
     // Calculate the the difference between two thumbnails
     fn difference(&self, other: &ImageThumbnail) -> f32 {
         // Zip two iterators of pixel channels together
-        self.inner.deref().simd_iter()
-            .zip(other.inner.deref().simd_iter())
+        self.inner.iter()
+            .zip(other.inner.iter())
             // Map to channel difference as f32
-            .map(|(a, b)| (f32::from(a) - f32::from(b)).abs())
+            .map(|(&a, &b)| (f32::from(a) - f32::from(b)).abs())
             // Divide by number of channels and rescale to 0 -> 100
             .sum::<f32>() / Self::TOTAL_CHANNELS as f32 / 255.0 * 100.0
     }
